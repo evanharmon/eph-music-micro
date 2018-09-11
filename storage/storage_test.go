@@ -77,34 +77,3 @@ func TestConfigureStorage(t *testing.T) {
 		t.Errorf("should not throw error on valid bucketId %s\n", key)
 	}
 }
-
-// BeforeTestGetProjectID unsets and resets the environment variable for a
-// Google Cloud Project ID
-func BeforeTestGetProjectID() error {
-	key := "GOOGLE_PROJECT_ID"
-	if err := os.Unsetenv(key); err != nil {
-		return fmt.Errorf("BeforeTestConfigureStorage: failed to unset ENV %s: %v", key, err)
-	}
-
-	if err := os.Setenv(key, "eph-music"); err != nil {
-		return fmt.Errorf("BeforeTestGetProjectID: failed to set ENV %s: %v", key, err)
-	}
-	return nil
-}
-
-// BeforeTestGetEnv tests retrieval of the Google Cloud Project ID environment
-// variable
-func TestGetProjectID(t *testing.T) {
-	if err := BeforeTestGetProjectID(); err != nil {
-		t.Errorf("Before failed: %v", err)
-	}
-
-	id, err := getProjectID()
-	if err != nil {
-		t.Errorf("Failed to get project id: %v\n", err)
-	}
-
-	if len(id) == 0 {
-		t.Errorf("Invalid project id set as const: %s\n", id)
-	}
-}
