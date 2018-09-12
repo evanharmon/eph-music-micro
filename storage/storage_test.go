@@ -1,17 +1,23 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 )
 
+var (
+	envVarProjectID = "GOOGLE_PROJECT_ID"
+	projectID       = "eph-music"
+	bucketName      = "eph-music"
+)
+
 // BeforeTestGetEnv unsets the environment variable for a Google Cloud Project
 // ID
 func BeforeTestGetEnv() error {
-	key := "GOOGLE_PROJECT_ID"
-	if err := os.Unsetenv(key); err != nil {
-		return fmt.Errorf("BeforeTestGetEnv: failed to unset ENV %s: %v", key, err)
+	if err := os.Unsetenv(envVarProjectID); err != nil {
+		return fmt.Errorf("BeforeTestGetEnv: failed to unset ENV %s: %v", envVarProjectID, err)
 	}
 
 	return nil
@@ -21,7 +27,7 @@ func BeforeTestGetEnv() error {
 func TestGetEnv(t *testing.T) {
 	// Test Empty String
 	if err := BeforeTestGetEnv(); err != nil {
-		t.Errorf("Before failed: %v", err)
+		t.Error(err)
 	}
 
 	val, err := getEnv("")
@@ -34,11 +40,10 @@ func TestGetEnv(t *testing.T) {
 
 	// Test ENV missing
 	if err := BeforeTestGetEnv(); err != nil {
-		t.Errorf("Before failed: %v", err)
+		t.Error(err)
 	}
 
-	key := "GOOGLE_PROJECT_ID"
-	val2, err2 := getEnv(key)
+	val2, err2 := getEnv(envVarProjectID)
 	if len(val2) != 0 {
 		t.Error("Missing ENV var should return empty string as default")
 	}
@@ -48,32 +53,82 @@ func TestGetEnv(t *testing.T) {
 
 	// VALID ENV should return
 	if err := BeforeTestGetEnv(); err != nil {
-		t.Errorf("Before failed: %v", err)
+		t.Error(err)
 	}
 
-	os.Setenv(key, "")
-	val4, err4 := getEnv(key)
+	os.Setenv(envVarProjectID, "")
+	val4, err4 := getEnv(envVarProjectID)
 	if err4 != nil {
 		t.Error("Valid ENV set should not throw error")
 	}
 	if len(val4) != 0 {
 		t.Error("Valid ENV set should get value")
 	}
+}
 
-	// AFTER
-	os.Unsetenv(key)
+func BeforeConfigureStorage() error {
+	ProjectID = projectID
+	return nil
 }
 
 // TestConfigureStoraage tests creating a client for the Google Cloud Storage
 // API
 func TestConfigureStorage(t *testing.T) {
-	key := "eph-music"
-	storageBucket, err := configureStorage(key)
-	if storageBucket == nil {
-		t.Errorf("should return valid storageBucket for bucketId %s\n", key)
+	if err := BeforeConfigureStorage(); err != nil {
+		t.Error(err)
 	}
 
+	err := ConfigureStorage(bucketName)
 	if err != nil {
-		t.Errorf("should not throw error on valid bucketId %s\n", key)
+		t.Errorf("should not throw error on valid bucketId %s\n", bucketName)
+	}
+}
+
+func BeforeTestCreate() error {
+	ProjectID = projectID
+	if err := ConfigureStorage(bucketName); err != nil {
+		return fmt.Errorf("BeforeTestCreate failed to configureStorage: %v", err)
+	}
+
+	return nil
+}
+
+func TestCreate(t *testing.T) {
+	// test initial bucket create
+	if err := BeforeTestCreate(); err != nil {
+		t.Error(err)
+	}
+	ctx := context.Background()
+	if err := Create(ctx); err != nil {
+		t.Errorf("Failed to create new bucket: %v", err)
+	}
+
+	// test duplicate bucket creation
+	if err := Create(ctx); err != nil {
+		t.Errorf("Failed to create new bucket: %v", err)
+	}
+}
+
+func BeforeTestDelete() error {
+	ProjectID = projectID
+	if err := ConfigureStorage(bucketName); err != nil {
+		return fmt.Errorf("BeforeTestCreate failed to configureStorage: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := Create(ctx); err != nil {
+		return fmt.Errorf("BeforeTestDelete failed to create new bucket: %v", err)
+	}
+
+	return nil
+}
+
+func TestDelete(t *testing.T) {
+	if err := BeforeTestDelete(); err != nil {
+		t.Error(err)
+	}
+	ctx := context.Background()
+	if err := Delete(ctx); err != nil {
+		t.Errorf("Failed to delete bucket: %v", err)
 	}
 }
