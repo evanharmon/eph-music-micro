@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
+
+	test "github.com/evanharmon/eph-music-micro/storage/testhelper"
 )
 
 var (
@@ -15,120 +16,73 @@ var (
 
 // BeforeTestGetEnv unsets the environment variable for a Google Cloud Project
 // ID
-func BeforeTestGetEnv() error {
-	if err := os.Unsetenv(envVarProjectID); err != nil {
-		return fmt.Errorf("BeforeTestGetEnv: failed to unset ENV %s: %v", envVarProjectID, err)
-	}
-
-	return nil
+func BeforeTestGetEnv(t *testing.T) {
+	test.Ok(t, os.Unsetenv(envVarProjectID))
 }
 
 // TestGetEnv tests the safe lookup of environment variables
 func TestGetEnv(t *testing.T) {
 	// Test Empty String
-	if err := BeforeTestGetEnv(); err != nil {
-		t.Error(err)
-	}
-
+	BeforeTestGetEnv(t)
 	val, err := getEnv("")
-	if len(val) != 0 {
-		t.Error("Empty string as argument should return empty string as default")
-	}
-	if err == nil {
-		t.Error("Empty string as argument string should throw error")
-	}
+	test.Assert(t, len(val) == 0, "Empty string as argument should return empty string as default")
+	test.Throws(t, err)
 
 	// Test ENV missing
-	if err := BeforeTestGetEnv(); err != nil {
-		t.Error(err)
-	}
-
+	BeforeTestGetEnv(t)
 	val2, err2 := getEnv(envVarProjectID)
-	if len(val2) != 0 {
-		t.Error("Missing ENV var should return empty string as default")
-	}
-	if err2 == nil {
-		t.Error("Missing ENV var should throw error")
-	}
+	test.Assert(t, len(val2) == 0, "Missing ENV var should return empty string as default")
+	test.Throws(t, err2)
 
 	// VALID ENV should return
-	if err := BeforeTestGetEnv(); err != nil {
-		t.Error(err)
-	}
-
+	BeforeTestGetEnv(t)
 	os.Setenv(envVarProjectID, "")
 	val4, err4 := getEnv(envVarProjectID)
-	if err4 != nil {
-		t.Error("Valid ENV set should not throw error")
-	}
-	if len(val4) != 0 {
-		t.Error("Valid ENV set should get value")
-	}
+	test.Assert(t, len(val4) == 0, "Valid ENV set should get value")
+	test.Ok(t, err4)
 }
 
-func BeforeConfigureStorage() error {
+func BeforeConfigureStorage(t *testing.T) {
 	ProjectID = projectID
-	return nil
+	return
 }
 
 // TestConfigureStoraage tests creating a client for the Google Cloud Storage
 // API
 func TestConfigureStorage(t *testing.T) {
-	if err := BeforeConfigureStorage(); err != nil {
-		t.Error(err)
-	}
-
-	err := ConfigureStorage(bucketName)
-	if err != nil {
-		t.Errorf("should not throw error on valid bucketId %s\n", bucketName)
-	}
+	BeforeConfigureStorage(t)
+	test.Ok(t, ConfigureStorage(bucketName))
 }
 
-func BeforeTestCreate() error {
+func BeforeTestCreate(t *testing.T) {
 	ProjectID = projectID
-	if err := ConfigureStorage(bucketName); err != nil {
-		return fmt.Errorf("BeforeTestCreate failed to configureStorage: %v", err)
-	}
-
-	return nil
+	test.Ok(t, ConfigureStorage(bucketName))
 }
 
 func TestCreate(t *testing.T) {
 	// test initial bucket create
-	if err := BeforeTestCreate(); err != nil {
-		t.Error(err)
-	}
+	BeforeTestCreate(t)
 	ctx := context.Background()
-	if err := Create(ctx); err != nil {
-		t.Errorf("Failed to create new bucket: %v", err)
-	}
+	test.Ok(t, Create(ctx))
 
 	// test duplicate bucket creation
-	if err := Create(ctx); err != nil {
-		t.Errorf("Failed to create new bucket: %v", err)
-	}
+	test.Ok(t, Create(ctx))
 }
 
-func BeforeTestDelete() error {
+func BeforeTestDelete(t *testing.T) {
 	ProjectID = projectID
-	if err := ConfigureStorage(bucketName); err != nil {
-		return fmt.Errorf("BeforeTestCreate failed to configureStorage: %v", err)
-	}
+	test.Ok(t, ConfigureStorage(bucketName))
 
 	ctx := context.Background()
-	if err := Create(ctx); err != nil {
-		return fmt.Errorf("BeforeTestDelete failed to create new bucket: %v", err)
-	}
-
-	return nil
+	test.Ok(t, Create(ctx))
 }
 
 func TestDelete(t *testing.T) {
-	if err := BeforeTestDelete(); err != nil {
-		t.Error(err)
-	}
+	BeforeTestDelete(t)
 	ctx := context.Background()
-	if err := Delete(ctx); err != nil {
-		t.Errorf("Failed to delete bucket: %v", err)
-	}
+	test.Ok(t, Delete(ctx))
 }
+
+// func TestUploadFile(t *testing.T) {
+
+// }

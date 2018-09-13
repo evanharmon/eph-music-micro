@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"path"
 
 	"cloud.google.com/go/storage"
+	uuid "github.com/satori/go.uuid"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 )
@@ -124,6 +127,27 @@ func Delete(ctx context.Context) error {
 	}
 	if err := storageBucket.Delete(ctx); err != nil {
 		return fmt.Errorf("Failed to delete storage bucket %s: %v", storageBucketName, err)
+	}
+
+	return nil
+}
+
+// UploadFile to storage bucket
+func UploadFile(ctx context.Context, fname string) error {
+	f, err := os.Open(fname)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// random filename, retaining existing extension.
+	name := uuid.Must(uuid.NewV4()).String() + path.Ext(fname)
+	wc := storageBucket.Object(name).NewWriter(ctx)
+	if _, err := io.Copy(wc, f); err != nil {
+		return err
+	}
+	if err := wc.Close(); err != nil {
+		return err
 	}
 
 	return nil
