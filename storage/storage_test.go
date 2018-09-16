@@ -2,66 +2,47 @@ package storage
 
 import (
 	"context"
-	"os"
+	"fmt"
 	"testing"
 
-	test "github.com/evanharmon/eph-music-micro/storage/testhelper"
+	helper "github.com/evanharmon/eph-music-micro/helper"
+	test "github.com/evanharmon/eph-music-micro/helper/testhelper"
 )
 
+//
 var (
 	envVarProjectID = "GOOGLE_PROJECT_ID"
-	projectID       = "eph-music"
-	bucketName      = "eph-music"
+	bucketName      = ""
 )
 
-// BeforeTestGetEnv unsets the environment variable for a Google Cloud Project
-// ID
-func BeforeTestGetEnv(t *testing.T) {
-	test.Ok(t, os.Unsetenv(envVarProjectID))
+// Setup sets the necessary vars from ENV exports
+func setup(t *testing.T) {
+	id, err := helper.GetEnv(envVarProjectID)
+	test.Ok(t, err)
+	test.Assert(t, len(id) != 0, "Export necessary ENV vars before running tests")
+	ProjectID = id
+	bucketName = fmt.Sprintf("%s-test", id)
 }
 
-// TestGetEnv tests the safe lookup of environment variables
-func TestGetEnv(t *testing.T) {
-	// Test Empty String
-	BeforeTestGetEnv(t)
-	val, err := getEnv("")
-	test.Assert(t, len(val) == 0, "Empty string as argument should return empty string as default")
-	test.Throws(t, err)
-
-	// Test ENV missing
-	BeforeTestGetEnv(t)
-	val2, err2 := getEnv(envVarProjectID)
-	test.Assert(t, len(val2) == 0, "Missing ENV var should return empty string as default")
-	test.Throws(t, err2)
-
-	// VALID ENV should return
-	BeforeTestGetEnv(t)
-	os.Setenv(envVarProjectID, "")
-	val4, err4 := getEnv(envVarProjectID)
-	test.Assert(t, len(val4) == 0, "Valid ENV set should get value")
-	test.Ok(t, err4)
-}
-
-func BeforeConfigureStorage(t *testing.T) {
-	ProjectID = projectID
-	return
+func beforeConfigureStorage(t *testing.T) {
+	setup(t)
 }
 
 // TestConfigureStoraage tests creating a client for the Google Cloud Storage
 // API
 func TestConfigureStorage(t *testing.T) {
-	BeforeConfigureStorage(t)
+	beforeConfigureStorage(t)
 	test.Ok(t, ConfigureStorage(bucketName))
 }
 
-func BeforeTestCreate(t *testing.T) {
-	ProjectID = projectID
+func beforeTestCreate(t *testing.T) {
+	setup(t)
 	test.Ok(t, ConfigureStorage(bucketName))
 }
 
 func TestCreate(t *testing.T) {
 	// test initial bucket create
-	BeforeTestCreate(t)
+	beforeTestCreate(t)
 	ctx := context.Background()
 	test.Ok(t, Create(ctx))
 
@@ -69,8 +50,8 @@ func TestCreate(t *testing.T) {
 	test.Ok(t, Create(ctx))
 }
 
-func BeforeTestDelete(t *testing.T) {
-	ProjectID = projectID
+func beforeTestDelete(t *testing.T) {
+	setup(t)
 	test.Ok(t, ConfigureStorage(bucketName))
 
 	ctx := context.Background()
@@ -78,7 +59,7 @@ func BeforeTestDelete(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	BeforeTestDelete(t)
+	beforeTestDelete(t)
 	ctx := context.Background()
 	test.Ok(t, Delete(ctx))
 }

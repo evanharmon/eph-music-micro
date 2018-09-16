@@ -11,6 +11,7 @@ import (
 	"path"
 
 	"cloud.google.com/go/storage"
+	helper "github.com/evanharmon/eph-music-micro/helper"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
@@ -20,7 +21,7 @@ import (
 var (
 	envs = map[string]string{
 		"credentials": "GOOGLE_APPLICATION_CREDENTIALS",
-		"projectID":   "GOOGLE_PROJECT_ID"}
+		"ProjectID":   "GOOGLE_PROJECT_ID"}
 	credentials       string
 	ProjectID         string
 	storageBucket     *storage.BucketHandle
@@ -31,25 +32,12 @@ var (
 // Init function loads required environment variables
 func Init() {
 	for k, v := range envs {
-		v, err := getEnv(v)
+		export, err := helper.GetEnv(v)
 		if err != nil {
 			log.Fatal(err)
 		}
-		envs[k] = v
+		envs[k] = export
 	}
-}
-
-// getEnv function provides a safe lookup for environment variables
-func getEnv(key string) (string, error) {
-	if len(key) == 0 {
-		return "", errors.New("Env variable must be provided to getEnv")
-	}
-	val, ok := os.LookupEnv(key)
-	if !ok {
-		return "", fmt.Errorf("Could not find environment variable: %s", key)
-	}
-
-	return val, nil
 }
 
 func checkConfig() error {
@@ -106,14 +94,19 @@ func ListBuckets() ([]string, error) {
 
 // Create attempts to create a new bucket for a project id
 // this custom create function is idempotent and will not return the 409 error
-// if bucket already exists
+// if bucket is owned and already exists
 func Create(ctx context.Context) error {
 	if err := checkConfig(); err != nil {
 		return err
 	}
 	err := storageBucket.Create(ctx, ProjectID, nil)
 	gerr, ok := err.(*googleapi.Error)
-	if err != nil && ok && gerr.Code != 409 {
+	if err != nil && !ok {
+		return err
+	}
+
+	msg := "You already own this bucket. Please select another name."
+	if err != nil && ok && gerr.Message != msg {
 		return err
 	}
 
