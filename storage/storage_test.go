@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	helper "github.com/evanharmon/eph-music-micro/helper"
@@ -53,7 +54,6 @@ func TestCreate(t *testing.T) {
 func beforeTestDelete(t *testing.T) {
 	setup(t)
 	test.Ok(t, ConfigureStorage(bucketName))
-
 	ctx := context.Background()
 	test.Ok(t, Create(ctx))
 }
@@ -64,6 +64,34 @@ func TestDelete(t *testing.T) {
 	test.Ok(t, Delete(ctx))
 }
 
-// func TestUploadFile(t *testing.T) {
+func beforeTestUploadFile(t *testing.T) {
+	setup(t)
+	test.Ok(t, ConfigureStorage(bucketName))
+	ctx := context.Background()
+	test.Ok(t, Create(ctx))
+}
 
-// }
+func TestUploadFile(t *testing.T) {
+	beforeTestUploadFile(t)
+	fpath, err := filepath.Abs("./testdata/upload-file.txt")
+	if err != nil {
+		t.Error(err)
+	}
+	ctx := context.Background()
+	test.Ok(t, UploadFile(ctx, fpath))
+}
+
+func beforeTestDeleteFile(t *testing.T) {
+	setup(t)
+	test.Ok(t, ConfigureStorage(bucketName))
+	ctx := context.Background()
+	test.Ok(t, Create(ctx))
+	TestUploadFile(t)
+}
+
+func TestDeleteFile(t *testing.T) {
+	beforeTestDeleteFile(t)
+	fname := "upload-file.txt"
+	ctx := context.Background()
+	test.Ok(t, DeleteFile(ctx, fname))
+}

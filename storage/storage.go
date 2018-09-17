@@ -8,11 +8,10 @@ import (
 	"io"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 
 	"cloud.google.com/go/storage"
 	helper "github.com/evanharmon/eph-music-micro/helper"
-	uuid "github.com/satori/go.uuid"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 )
@@ -126,16 +125,19 @@ func Delete(ctx context.Context) error {
 }
 
 // UploadFile to storage bucket
-func UploadFile(ctx context.Context, fname string) error {
-	f, err := os.Open(fname)
+func UploadFile(ctx context.Context, fpath string) error {
+	f, err := os.Open(fpath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func(file *os.File) {
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(f)
 
-	// random filename, retaining existing extension.
-	name := uuid.Must(uuid.NewV4()).String() + path.Ext(fname)
-	wc := storageBucket.Object(name).NewWriter(ctx)
+	fname := filepath.Base(fpath)
+	wc := storageBucket.Object(fname).NewWriter(ctx)
 	if _, err := io.Copy(wc, f); err != nil {
 		return err
 	}
@@ -143,5 +145,13 @@ func UploadFile(ctx context.Context, fname string) error {
 		return err
 	}
 
+	return nil
+}
+
+// DeleteFile from storage bucket
+func DeleteFile(ctx context.Context, name string) error {
+	if err := storageBucket.Object(name).Delete(ctx); err != nil {
+		return err
+	}
 	return nil
 }
