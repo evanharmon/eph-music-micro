@@ -27,8 +27,6 @@ func testBucketName(t *testing.T, id string) string {
 	return fmt.Sprintf("test-eph-music-%s", id)
 }
 
-// TestConfigure tests creating a client for the Google Cloud Storage
-// API
 func TestConfigure(t *testing.T) {
 	uid := uuid.New()
 	name := testBucketName(t, uid)
@@ -40,7 +38,6 @@ func TestConfigure(t *testing.T) {
 	})
 }
 
-// Setup sets the necessary vars from ENV exports
 func TestNew(t *testing.T) {
 	id := testProjectID(t)
 	uid := uuid.New()
