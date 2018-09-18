@@ -16,17 +16,37 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-// ProjectID can be changed to re-use the client
 var (
 	envs = map[string]string{
 		"credentials": "GOOGLE_APPLICATION_CREDENTIALS",
 		"ProjectID":   "GOOGLE_PROJECT_ID"}
-	credentials       string
-	ProjectID         string
-	storageBucket     *storage.BucketHandle
-	storageBucketName string
-	storageClient     *storage.Client
+	credentials string
 )
+
+type StorageBucket struct {
+	handle    *storage.BucketHandle
+	name      string
+	client    *storage.Client
+	projectID string
+}
+
+// New inits and returns the bucket handler and client
+func New(projectID string, name string) (*StorageBucket, error) {
+	if projectID == "" {
+		return nil, errors.New("ProjectID must not be an empty string")
+	}
+
+	if len(name) == 0 {
+		return nil, errors.New("BucketName must be provided")
+	}
+
+	client, err := configure(name)
+	if err != nil {
+		return nil, err
+	}
+	handle := client.Bucket(name)
+	return &StorageBucket{handle, name, client, projectID}, nil
+}
 
 // Init function loads required environment variables
 func Init() {
@@ -39,45 +59,24 @@ func Init() {
 	}
 }
 
-func checkConfig() error {
-	if storageBucket == nil {
-		return errors.New("Use ConfigureStore() before calling ListBuckets()")
-	}
-	if ProjectID == "" {
-		return errors.New("ProjectID must not be an empty string")
-	}
-
-	return nil
-}
-
-// ConfigureStorage creats a client re-use.
+// ConfigureStorage creates a client for re-use.
 // The client is not tied to a project id.
-func ConfigureStorage(bucketName string) error {
-	if len(bucketName) == 0 {
-		return errors.New("BucketName must be provided")
-	}
-	storageBucketName = bucketName
-
+func configure(name string) (*storage.Client, error) {
 	ctx := context.Background()
-	var err error
-	storageClient, err = storage.NewClient(ctx)
+	client, err := storage.NewClient(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	storageBucket = storageClient.Bucket(storageBucketName)
-	return nil
+	return client, nil
 }
 
 // ListBuckets provides a way to list all storage buckets by Project ID.
 // Change the `ProjectID` package global for other project bucket lists
-func ListBuckets() ([]string, error) {
-	if err := checkConfig(); err != nil {
-		return []string{}, err
-	}
+func (bkt *StorageBucket) ListBuckets() ([]string, error) {
 	ctx := context.Background()
 	var buckets []string
-	it := storageClient.Buckets(ctx, ProjectID)
+	it := bkt.client.Buckets(ctx, bkt.projectID)
 	for {
 		battrs, err := it.Next()
 		if err == iterator.Done {
@@ -94,11 +93,8 @@ func ListBuckets() ([]string, error) {
 // Create attempts to create a new bucket for a project id
 // this custom create function is idempotent and will not return the 409 error
 // if bucket is owned and already exists
-func Create(ctx context.Context) error {
-	if err := checkConfig(); err != nil {
-		return err
-	}
-	err := storageBucket.Create(ctx, ProjectID, nil)
+func (bkt *StorageBucket) Create(ctx context.Context) error {
+	err := bkt.handle.Create(ctx, bkt.projectID, nil)
 	gerr, ok := err.(*googleapi.Error)
 	if err != nil && !ok {
 		return err
@@ -113,19 +109,16 @@ func Create(ctx context.Context) error {
 }
 
 // Delete the bucket
-func Delete(ctx context.Context) error {
-	if err := checkConfig(); err != nil {
-		return err
-	}
-	if err := storageBucket.Delete(ctx); err != nil {
-		return fmt.Errorf("Failed to delete storage bucket %s: %v", storageBucketName, err)
+func (bkt *StorageBucket) Delete(ctx context.Context) error {
+	if err := bkt.handle.Delete(ctx); err != nil {
+		return fmt.Errorf("Failed to delete storage bucket %s: %v", bkt.name, err)
 	}
 
 	return nil
 }
 
 // UploadFile to storage bucket
-func UploadFile(ctx context.Context, fpath string) error {
+func (bkt *StorageBucket) UploadFile(ctx context.Context, fpath string) error {
 	f, err := os.Open(fpath)
 	if err != nil {
 		return err
@@ -137,7 +130,7 @@ func UploadFile(ctx context.Context, fpath string) error {
 	}(f)
 
 	fname := filepath.Base(fpath)
-	wc := storageBucket.Object(fname).NewWriter(ctx)
+	wc := bkt.handle.Object(fname).NewWriter(ctx)
 	if _, err := io.Copy(wc, f); err != nil {
 		return err
 	}
@@ -149,8 +142,8 @@ func UploadFile(ctx context.Context, fpath string) error {
 }
 
 // DeleteFile from storage bucket
-func DeleteFile(ctx context.Context, name string) error {
-	if err := storageBucket.Object(name).Delete(ctx); err != nil {
+func (bkt *StorageBucket) DeleteFile(ctx context.Context, name string) error {
+	if err := bkt.handle.Object(name).Delete(ctx); err != nil {
 		return err
 	}
 	return nil
