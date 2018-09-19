@@ -23,6 +23,14 @@ var (
 	credentials string
 )
 
+type Service interface {
+	ListBuckets() ([]string, error)
+	Create(ctx context.Context) error
+	Delete(ctx context.Context) error
+	UploadFile(ctx context.Context, fpath string) error
+	DeleteFile(ctx context.Context, name string) error
+}
+
 type StorageBucket struct {
 	handle    *storage.BucketHandle
 	name      string
@@ -31,7 +39,7 @@ type StorageBucket struct {
 }
 
 // New inits and returns the bucket handler and client
-func New(projectID string, name string) (*StorageBucket, error) {
+func New(projectID string, name string) (Service, error) {
 	if projectID == "" {
 		return nil, errors.New("ProjectID must not be an empty string")
 	}

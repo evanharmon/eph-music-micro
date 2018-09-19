@@ -50,13 +50,13 @@ func TestNew(t *testing.T) {
 	})
 }
 
-func testNew(t *testing.T, id string, name string) *StorageBucket {
+func testNew(t *testing.T, id string, name string) Service {
 	t.Helper()
-	bucket, err := New(id, name)
+	bucketsvc, err := New(id, name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return bucket
+	return bucketsvc
 }
 
 func TestCreate(t *testing.T) {
