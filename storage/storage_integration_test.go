@@ -1,3 +1,5 @@
+// +build integration
+
 package storage
 
 import (
@@ -7,19 +9,20 @@ import (
 	"testing"
 
 	helper "github.com/evanharmon/eph-music-micro/helper"
-	"github.com/pborman/uuid"
+	pb "github.com/evanharmon/eph-music-micro/storage/proto/storage"
+	"github.com/google/uuid"
 )
 
 func testProjectID(t *testing.T) string {
 	t.Helper()
-	projectID, err := helper.GetEnv("GOOGLE_PROJECT_ID")
+	id, err := helper.GetEnv("GOOGLE_PROJECT_ID")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(projectID) == 0 {
+	if len(id) == 0 {
 		t.Fatal("ProjectID must not be an empty string")
 	}
-	return projectID
+	return id
 }
 
 func testBucketName(t *testing.T, id string) string {
@@ -28,11 +31,8 @@ func testBucketName(t *testing.T, id string) string {
 }
 
 func TestConfigure(t *testing.T) {
-	uid := uuid.New()
-	name := testBucketName(t, uid)
-
 	t.Run("success", func(t *testing.T) {
-		if _, err := configure(name); err != nil {
+		if _, err := configure(); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -40,29 +40,41 @@ func TestConfigure(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	id := testProjectID(t)
-	uid := uuid.New()
-	name := testBucketName(t, uid)
+	bid := uuid.New().String()
+	name := testBucketName(t, bid)
 
 	t.Run("success", func(t *testing.T) {
 		if _, err := New(id, name); err != nil {
 			t.Fatal(err)
 		}
 	})
+	t.Run("empty project id", func(t *testing.T) {
+		client, err := New("", name)
+		if client != nil || err == nil {
+			t.Error("Empty string project ID should return an error")
+		}
+	})
+	t.Run("empty bucket name", func(t *testing.T) {
+		client, err := New(id, "")
+		if client != nil || err == nil {
+			t.Error("Empty string bucket name should return an error")
+		}
+	})
 }
 
 func testNew(t *testing.T, id string, name string) Service {
 	t.Helper()
-	bucketsvc, err := New(id, name)
+	svc, err := New(id, name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return bucketsvc
+	return svc
 }
 
 func TestCreate(t *testing.T) {
 	id := testProjectID(t)
-	uid := uuid.New()
-	name := testBucketName(t, uid)
+	bid := uuid.New().String()
+	name := testBucketName(t, bid)
 
 	tests := map[string]struct {
 		name string
@@ -71,14 +83,15 @@ func TestCreate(t *testing.T) {
 		"duplicate bucket success": {name},
 	}
 
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
 				// SETUP
-				bucket := testNew(t, id, test.name)
+				s := testNew(t, id, test.name)
 				// TEST
-				ctx := context.Background()
-				if err := bucket.Create(ctx); err != nil {
+				p := &pb.Project{Id: id}
+				if err := s.Create(context.Background(), p); err != nil {
 					t.Fatal(err)
 				}
 			})
@@ -87,10 +100,10 @@ func TestCreate(t *testing.T) {
 
 	t.Run("failure", func(t *testing.T) {
 		// SETUP
-		bucket := testNew(t, id, "test") // always taken
+		s := testNew(t, id, "test") // always taken
 		// TEST
-		ctx := context.Background()
-		if err := bucket.Create(ctx); err == nil {
+		p := &pb.Project{Id: id}
+		if err := s.Create(context.Background(), p); err == nil {
 			t.Fatal("should throw error on duplicate bucket")
 		}
 	})
@@ -100,23 +113,23 @@ func TestCreate(t *testing.T) {
 
 func testCreate(t *testing.T, id string, name string) {
 	t.Helper()
-	bucket := testNew(t, id, name)
-	ctx := context.Background()
-	if err := bucket.Create(ctx); err != nil {
+	s := testNew(t, id, name)
+	p := &pb.Project{Id: id}
+	if err := s.Create(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestDelete(t *testing.T) {
 	id := testProjectID(t)
-	uid := uuid.New()
-	name := testBucketName(t, uid)
-	bucket := testNew(t, id, name)
+	bid := uuid.New().String()
+	name := testBucketName(t, bid)
+	s := testNew(t, id, name)
 	testCreate(t, id, name)
 
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
-		ctx := context.Background()
-		if err := bucket.Delete(ctx); err != nil {
+		if err := s.Delete(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -125,27 +138,26 @@ func TestDelete(t *testing.T) {
 func testDelete(t *testing.T, id string, name string) {
 	t.Helper()
 	testCreate(t, id, name)
-	bucket := testNew(t, id, name)
-	ctx := context.Background()
-	if err := bucket.Delete(ctx); err != nil {
+	s := testNew(t, id, name)
+	if err := s.Delete(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestUploadFile(t *testing.T) {
 	id := testProjectID(t)
-	uid := uuid.New()
-	name := testBucketName(t, uid)
+	fid := uuid.New().String()
+	name := testBucketName(t, fid)
 	testCreate(t, id, name)
-	bucket := testNew(t, id, name)
-	fpath, err := filepath.Abs("./testdata/upload-file.txt")
+	s := testNew(t, id, name)
+	path, err := filepath.Abs("./testdata/upload-file.txt")
 	if err != nil {
 		t.Error(err)
 	}
 
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
-		ctx := context.Background()
-		if err := bucket.UploadFile(ctx, fpath); err != nil {
+		if err := s.UploadFile(context.Background(), path); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -156,29 +168,29 @@ func TestUploadFile(t *testing.T) {
 
 func testUploadFile(t *testing.T, id string, name string, fname string) {
 	t.Helper()
-	bucket := testNew(t, id, name)
-	ctx := context.Background()
+	s := testNew(t, id, name)
 	testCreate(t, id, name)
-	fpath, err := filepath.Abs(fname)
+	path, err := filepath.Abs(fname)
 	if err != nil {
 		t.Error(err)
 	}
-	if err := bucket.UploadFile(ctx, fpath); err != nil {
+	if err := s.UploadFile(context.Background(), path); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestDeleteFile(t *testing.T) {
 	id := testProjectID(t)
-	uid := uuid.New()
-	name := testBucketName(t, uid)
+	fid := uuid.New().String()
+	name := testBucketName(t, fid)
 	fname := "./testdata/upload-file.txt"
 	testUploadFile(t, id, name, fname)
-	bucket := testNew(t, id, name)
+	s := testNew(t, id, name)
 
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
-		ctx := context.Background()
-		if err := bucket.DeleteFile(ctx, "upload-file.txt"); err != nil {
+		err := s.DeleteFile(context.Background(), "upload-file.txt")
+		if err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -186,9 +198,8 @@ func TestDeleteFile(t *testing.T) {
 
 func testDeleteFile(t *testing.T, id string, name string, fname string) {
 	t.Helper()
-	bucket := testNew(t, id, name)
-	ctx := context.Background()
-	if err := bucket.DeleteFile(ctx, fname); err != nil {
+	s := testNew(t, id, name)
+	if err := s.DeleteFile(context.Background(), fname); err != nil {
 		t.Fatal(err)
 	}
 }

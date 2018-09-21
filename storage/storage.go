@@ -1,3 +1,5 @@
+// +build integration
+
 // Package storage for Cloud Storage api interactions
 package storage
 
@@ -10,8 +12,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"cloud.google.com/go/storage"
+	gclstorage "cloud.google.com/go/storage"
 	helper "github.com/evanharmon/eph-music-micro/helper"
+	pb "github.com/evanharmon/eph-music-micro/storage/proto/storage"
+
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 )
@@ -24,36 +28,18 @@ var (
 )
 
 type Service interface {
-	ListBuckets() ([]string, error)
-	Create(ctx context.Context) error
+	Create(ctx context.Context, p *pb.Project) error
 	Delete(ctx context.Context) error
-	UploadFile(ctx context.Context, fpath string) error
+	ListBuckets(p *pb.Project) ([]string, error)
+	UploadFile(ctx context.Context, path string) error
 	DeleteFile(ctx context.Context, name string) error
 }
 
 type StorageBucket struct {
-	handle    *storage.BucketHandle
-	name      string
-	client    *storage.Client
-	projectID string
-}
-
-// New inits and returns the bucket handler and client
-func New(projectID string, name string) (Service, error) {
-	if projectID == "" {
-		return nil, errors.New("ProjectID must not be an empty string")
-	}
-
-	if len(name) == 0 {
-		return nil, errors.New("BucketName must be provided")
-	}
-
-	client, err := configure(name)
-	if err != nil {
-		return nil, err
-	}
-	handle := client.Bucket(name)
-	return &StorageBucket{handle, name, client, projectID}, nil
+	client *gclstorage.Client
+	handle *gclstorage.BucketHandle
+	// bucketName is coupled to the handle
+	name string
 }
 
 // Init function loads required environment variables
@@ -69,9 +55,8 @@ func Init() {
 
 // ConfigureStorage creates a client for re-use.
 // The client is not tied to a project id.
-func configure(name string) (*storage.Client, error) {
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
+func configure() (*gclstorage.Client, error) {
+	client, err := gclstorage.NewClient(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -79,12 +64,29 @@ func configure(name string) (*storage.Client, error) {
 	return client, nil
 }
 
+// New inits and returns the bucket handler and client
+func New(projectID string, name string) (Service, error) {
+	if projectID == "" {
+		return nil, errors.New("ProjectID must not be an empty string")
+	}
+
+	if len(name) == 0 {
+		return nil, errors.New("BucketName must be provided")
+	}
+
+	client, err := configure()
+	if err != nil {
+		return nil, err
+	}
+	handle := client.Bucket(name)
+	return &StorageBucket{client, handle, name}, nil
+}
+
 // ListBuckets provides a way to list all storage buckets by Project ID.
 // Change the `ProjectID` package global for other project bucket lists
-func (bkt *StorageBucket) ListBuckets() ([]string, error) {
-	ctx := context.Background()
+func (s *StorageBucket) ListBuckets(p *pb.Project) ([]string, error) {
 	var buckets []string
-	it := bkt.client.Buckets(ctx, bkt.projectID)
+	it := s.client.Buckets(context.Background(), p.Id)
 	for {
 		battrs, err := it.Next()
 		if err == iterator.Done {
@@ -101,8 +103,8 @@ func (bkt *StorageBucket) ListBuckets() ([]string, error) {
 // Create attempts to create a new bucket for a project id
 // this custom create function is idempotent and will not return the 409 error
 // if bucket is owned and already exists
-func (bkt *StorageBucket) Create(ctx context.Context) error {
-	err := bkt.handle.Create(ctx, bkt.projectID, nil)
+func (s *StorageBucket) Create(ctx context.Context, p *pb.Project) error {
+	err := s.handle.Create(ctx, p.Id, nil)
 	gerr, ok := err.(*googleapi.Error)
 	if err != nil && !ok {
 		return err
@@ -117,17 +119,17 @@ func (bkt *StorageBucket) Create(ctx context.Context) error {
 }
 
 // Delete the bucket
-func (bkt *StorageBucket) Delete(ctx context.Context) error {
-	if err := bkt.handle.Delete(ctx); err != nil {
-		return fmt.Errorf("Failed to delete storage bucket %s: %v", bkt.name, err)
+func (s *StorageBucket) Delete(ctx context.Context) error {
+	if err := s.handle.Delete(ctx); err != nil {
+		return fmt.Errorf("Failed to delete storage bucket %s: %v", s.name, err)
 	}
 
 	return nil
 }
 
 // UploadFile to storage bucket
-func (bkt *StorageBucket) UploadFile(ctx context.Context, fpath string) error {
-	f, err := os.Open(fpath)
+func (s *StorageBucket) UploadFile(ctx context.Context, path string) error {
+	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
@@ -137,8 +139,8 @@ func (bkt *StorageBucket) UploadFile(ctx context.Context, fpath string) error {
 		}
 	}(f)
 
-	fname := filepath.Base(fpath)
-	wc := bkt.handle.Object(fname).NewWriter(ctx)
+	fname := filepath.Base(path)
+	wc := s.handle.Object(fname).NewWriter(ctx)
 	if _, err := io.Copy(wc, f); err != nil {
 		return err
 	}
@@ -150,8 +152,8 @@ func (bkt *StorageBucket) UploadFile(ctx context.Context, fpath string) error {
 }
 
 // DeleteFile from storage bucket
-func (bkt *StorageBucket) DeleteFile(ctx context.Context, name string) error {
-	if err := bkt.handle.Object(name).Delete(ctx); err != nil {
+func (s *StorageBucket) DeleteFile(ctx context.Context, name string) error {
+	if err := s.handle.Object(name).Delete(ctx); err != nil {
 		return err
 	}
 	return nil
