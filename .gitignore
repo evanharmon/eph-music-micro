@@ -1,3 +1,11 @@
+# Compiled files
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+
+# Directories
+.terraform/
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
