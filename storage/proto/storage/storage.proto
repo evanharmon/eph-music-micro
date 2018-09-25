@@ -1,21 +1,12 @@
 syntax = "proto3";
 
-package storage;
-option go_package="storagepb";
-
 service Storage {
   rpc Create(Project) returns (Response) {}
-  rpc Delete(DeleteParams) returns (Response) {}
+  rpc Delete() returns (Response) {}
   rpc ListBuckets(Project) returns (Response) {}
-  rpc UploadFile(UploadFileParams) returns (Response) {}
-  rpc DeleteFile(UploadFileParams) returns (Response) {}
+  rpc UploadFile() returns (Response) {}
+  rpc UploadFile() returns (Response) {}
 }
-
-message DeleteParams {}
-
-message UploadFileParams {}
-
-message DeleteFileParams {}
 
 message Bucket {
   string name = 1;

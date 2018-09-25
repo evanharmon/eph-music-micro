@@ -1,7 +1,7 @@
 // +build integration
 
-// Package main for Cloud Storage api interactions
-package main
+// Package storage for Cloud Storage api interactions
+package storage
 
 import (
 	"context"
@@ -12,9 +12,9 @@ import (
 	"os"
 	"path/filepath"
 
-	gstorage "cloud.google.com/go/storage"
+	gclstorage "cloud.google.com/go/storage"
 	helper "github.com/evanharmon/eph-music-micro/helper"
-	pb "github.com/evanharmon/eph-music-micro/storage/proto/storagepb"
+	pb "github.com/evanharmon/eph-music-micro/storage/proto/storage"
 
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
@@ -36,8 +36,8 @@ type Service interface {
 }
 
 type StorageBucket struct {
-	client *gstorage.Client
-	handle *gstorage.BucketHandle
+	client *gclstorage.Client
+	handle *gclstorage.BucketHandle
 	// bucketName is coupled to the handle
 	name string
 }
@@ -55,8 +55,8 @@ func Init() {
 
 // ConfigureStorage creates a client for re-use.
 // The client is not tied to a project id.
-func configure() (*gstorage.Client, error) {
-	client, err := gstorage.NewClient(context.Background())
+func configure() (*gclstorage.Client, error) {
+	client, err := gclstorage.NewClient(context.Background())
 	if err != nil {
 		return nil, err
 	}
