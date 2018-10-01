@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package storage;
+option go_package="storagepb";
+
+service Storage {
+  rpc Create(CreateRequest) returns (CreateResponse) {}
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+  rpc ListBuckets(ListBucketsRequest) returns (ListBucketsResponse) {}
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse) {}
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse) {}
+}
+
+message Bucket {
+  string name = 1;
+  string class = 2;
+  string location = 3;
+}
+
+message Project {
+  string name = 1;
+  string id = 2;
+  uint64 number = 3;
+}
+
+message File {
+  string name = 2;
+  string path = 3;
+}
+
+message Error {
+  int32 code = 1;
+  string description = 2;
+}
+
+message Chunk {
+  bytes content = 1;
+}
+
+enum UploadStatusCode {
+  Unknown = 0;
+  Ok = 1;
+  Failed = 2;
+}
+
+message CreateRequest {
+  Project project = 1;
+  Bucket bucket = 2;
+}
+
+message CreateResponse {
+  string result = 1;
+}
+
+message DeleteRequest {
+  Project project = 1;
+  Bucket bucket = 2;
+}
+
+message DeleteResponse {
+  string result = 1;
+}
+
+message ListBucketsRequest {
+  Project project = 1;
+}
+
+message ListBucketsResponse {
+  repeated Bucket buckets = 1;
+}
+
+message UploadFileRequest {
+  Project project = 1;
+  Bucket bucket = 2;
+  Chunk chunk = 3;
+  File file = 4;
+}
+
+message UploadFileResponse {
+  string message = 1;
+  UploadStatusCode code = 2;
+}
+
+message DeleteFileRequest {
+  Bucket bucket = 1;
+  File file = 2;
+}
+
+message DeleteFileResponse {
+  string result = 1;
+}

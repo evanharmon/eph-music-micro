@@ -5,13 +5,13 @@ GOPATH:=$(shell go env GOPATH)
 
 
 proto:
-	protoc --proto_path=${GOPATH}/src:. --micro_out=. --go_out=. proto/storage/storage.proto
+	protoc --go_out=plugins=grpc:. proto/storagepb/storage.proto
 
 build: proto
-	go build -o storage-api storage.go
+	go build -o storage storage.go
 
 test:
 	go test -v ./... -cover
 
 docker:
-	docker build . -t storage-api:latest
+	docker build . -t storage:latest
