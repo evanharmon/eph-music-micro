@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
 
 	pb "github.com/evanharmon/eph-music-micro/storage/proto/storagepb"
 	"github.com/pkg/errors"
@@ -55,28 +56,29 @@ func (c *ClientGRPC) runDelete(ctx context.Context, req *pb.DeleteRequest) error
 }
 
 // UploadFile to storage bucket
-func (c *ClientGRPC) runUploadFile(ctx context.Context, fname string) error {
+func (c *ClientGRPC) runUploadFile(ctx context.Context, req *pb.UploadFileRequest) error {
 	var (
-		writing = true
 		buf     []byte
-		n       int
+		err     error
 		file    *os.File
+		n       int
 		status  *pb.UploadFileResponse
+		writing = true
 	)
 
-	file, err := os.Open(fname)
+	file, err = os.Open(req.File.Path)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error opening file: %v\n", err)
 	}
 	defer func(f *os.File) {
-		if err := f.Close(); err != nil {
+		if err = f.Close(); err != nil {
 			log.Fatal(err)
 		}
 	}(file)
 
 	stream, err := c.client.UploadFile(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error uploading file via stream: %v\n", stream)
 	}
 	defer func(s pb.Storage_UploadFileClient) {
 		err = stream.CloseSend()
@@ -89,44 +91,42 @@ func (c *ClientGRPC) runUploadFile(ctx context.Context, fname string) error {
 	for writing {
 		n, err = file.Read(buf)
 		if err != nil {
-			if err != io.EOF {
+			if err == io.EOF {
 				writing = false
 				err = nil
 				continue
 			}
-
-			return nil
+			return fmt.Errorf("Error copying from file to buf: %v\n", err)
 		}
 
-		err = stream.Send(&pb.UploadFileRequest{
-			Project: &pb.Project{
-				Id: "evan-terraform-admin",
-			},
-			Bucket: &pb.Bucket{
-				Name: "eph-test-music",
-			},
-			Chunk: &pb.Chunk{
-				Content: buf[:n],
-			},
-		})
+		req.Chunk.Content = buf[:n]
+		err = stream.Send(req)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error on stream.Send() %v\n", err)
 		}
 	}
 
 	status, err = stream.CloseAndRecv()
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to receive upstream status response: %v\n", err)
 	}
 
 	if status.Code != pb.UploadStatusCode_Ok {
-		return fmt.Errorf("upload failed - msg: %s", status.Message)
+		return fmt.Errorf("upload failed - msg: %s\n", status.Message)
 	}
+
+	fmt.Printf("upload file - msg: %s\n", status.Message)
 	return nil
 }
 
 // DeleteFile from storage bucket
 func (c *ClientGRPC) runDeleteFile(ctx context.Context, req *pb.DeleteFileRequest) error {
+	res, err := c.client.DeleteFile(ctx, req)
+	if err != nil {
+		return err
+	}
+	log.Println(res)
+
 	return nil
 }
 
@@ -154,49 +154,66 @@ func NewClientGRPC() (c ClientGRPC, err error) {
 }
 
 func main() {
+	var (
+		fpath      string
+		fname      string
+		err        error
+		projectId  string
+		bucketName string
+	)
+	fpath = "/Users/evan/go/src/github.com/evanharmon/eph-music-micro/storage/testdata/upload-file.txt"
+	fname = path.Base(fpath)
+	projectId = "evan-terraform-admin"
+	bucketName = "test-eph-music"
+
 	c, err := NewClientGRPC()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// lbreq := &pb.ListBucketsRequest{
-	// Project: &pb.Project{
-	// Id: "evan-terraform-admin",
-	// },
-	// }
-	// err = c.runListBuckets(context.Background(), lbreq)
-	// if err != nil {
-	// log.Fatal(err)
-	// }
-
-	creq := &pb.CreateRequest{
-		Project: &pb.Project{
-			Id: "evan-terraform-admin",
-		},
-		Bucket: &pb.Bucket{
-			Name: "test-eph-music",
-		},
-	}
-	err = c.runCreate(context.Background(), creq)
+	fmt.Println("Listing Buckets")
+	err = c.runListBuckets(context.Background(), &pb.ListBucketsRequest{
+		Project: &pb.Project{Id: projectId},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// fname := "/Users/evan/go/src/github.com/evanharmon/eph-music-micro/storage/testdata/upload-file.txt"
-	// err = c.runUploadFile(context.Background(), fname)
-	// if err != nil {
-	// log.Fatal(err)
-	// }
-
-	dreq := &pb.DeleteRequest{
-		Project: &pb.Project{
-			Id: "evan-terraform-admin",
-		},
-		Bucket: &pb.Bucket{
-			Name: "test-eph-music",
-		},
+	fmt.Println("Creating Bucket")
+	err = c.runCreate(context.Background(), &pb.CreateRequest{
+		Project: &pb.Project{Id: projectId},
+		Bucket:  &pb.Bucket{Name: bucketName},
+	})
+	if err != nil {
+		log.Fatal(err)
 	}
-	err = c.runDelete(context.Background(), dreq)
+
+	fmt.Println("Uploading File")
+	err = c.runUploadFile(context.Background(), &pb.UploadFileRequest{
+		Project: &pb.Project{Id: projectId},
+		Bucket:  &pb.Bucket{Name: bucketName},
+		File:    &pb.File{Name: fname, Path: fpath},
+		Chunk:   &pb.Chunk{Content: []byte{}},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Delete File")
+	err = c.runDeleteFile(context.Background(), &pb.DeleteFileRequest{
+		Project: &pb.Project{Id: projectId},
+		Bucket:  &pb.Bucket{Name: bucketName},
+		File:    &pb.File{Name: fname, Path: fpath},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Delete Bucket")
+	err = c.runDelete(context.Background(), &pb.DeleteRequest{
+		Project: &pb.Project{Id: projectId},
+		Bucket:  &pb.Bucket{Name: bucketName},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

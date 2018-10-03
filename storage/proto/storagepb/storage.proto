@@ -4,11 +4,11 @@ package storage;
 option go_package="storagepb";
 
 service Storage {
-  rpc Create(CreateRequest) returns (CreateResponse) {}
-  rpc Delete(DeleteRequest) returns (DeleteResponse) {}
-  rpc ListBuckets(ListBucketsRequest) returns (ListBucketsResponse) {}
-  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse) {}
-  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse) {}
+  rpc Create(CreateRequest) returns (CreateResponse) {};
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {};
+  rpc ListBuckets(ListBucketsRequest) returns (ListBucketsResponse) {};
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse) {};
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse) {};
 }
 
 message Bucket {
@@ -82,8 +82,9 @@ message UploadFileResponse {
 }
 
 message DeleteFileRequest {
-  Bucket bucket = 1;
-  File file = 2;
+  Project project = 1;
+  Bucket bucket = 2;
+  File file = 3;
 }
 
 message DeleteFileResponse {
