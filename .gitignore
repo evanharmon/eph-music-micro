@@ -13,3 +13,6 @@
 
 ## Generated Proto Files
 **/proto/*/*.go
+
+## Whitelist Proto Tests
+!**/proto/**/*_test.go

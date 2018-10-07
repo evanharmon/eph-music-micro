@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
+	"strconv"
 
 	gstorage "cloud.google.com/go/storage"
 	pb "github.com/evanharmon/eph-music-micro/storage/proto/storagepb"
@@ -16,14 +16,55 @@ import (
 	"google.golang.org/grpc"
 )
 
-const port = 50051
-
 type ServerGRPC struct {
 	server *grpc.Server
 	client *gstorage.Client
 	handle *gstorage.BucketHandle
+
 	// bucketName is coupled to the handle
 	name string
+	port int
+}
+
+type ServerGRPCConfig struct {
+	// bucketName is coupled to the handle
+	Name    string
+	Port    int
+	Project string
+}
+
+// New inits and returns the bucket handler and client
+func NewServerGRPC(cfg ServerGRPCConfig) (*ServerGRPC, error) {
+	var (
+		err error
+		s   ServerGRPC
+
+		name    = cfg.Name
+		port    = cfg.Port
+		project = cfg.Project
+	)
+	if port == 0 {
+		return &s, errors.New("Port must be specified")
+	}
+
+	if project == "" {
+		return &s, errors.New("ProjectID must not be an empty string")
+	}
+
+	if name == "" {
+		return &s, errors.New("BucketName must be provided")
+	}
+
+	client, err := configure()
+	if err != nil {
+		return nil, err
+	}
+	handle := client.Bucket(name)
+	server := grpc.NewServer()
+	s = ServerGRPC{server, client, handle, name, port}
+	pb.RegisterStorageServer(server, &s)
+
+	return &s, nil
 }
 
 // ListBuckets provides a way to list all storage buckets by Project ID.
@@ -166,30 +207,8 @@ func configure() (*gstorage.Client, error) {
 	return client, nil
 }
 
-// New inits and returns the bucket handler and client
-func NewServerGRPC(projectID string, name string) (*ServerGRPC, error) {
-	if projectID == "" {
-		return nil, errors.New("ProjectID must not be an empty string")
-	}
-
-	if len(name) == 0 {
-		return nil, errors.New("BucketName must be provided")
-	}
-
-	client, err := configure()
-	if err != nil {
-		return nil, err
-	}
-	handle := client.Bucket(name)
-	server := grpc.NewServer()
-	s := &ServerGRPC{server, client, handle, name}
-	pb.RegisterStorageServer(server, s)
-
-	return s, nil
-}
-
 func (s *ServerGRPC) Listen() error {
-	lis, err := net.Listen("tcp", "0.0.0.0:50051")
+	lis, err := net.Listen("tcp", ":"+strconv.Itoa(s.port))
 	if err != nil {
 		return fmt.Errorf("Failed to listen: %v", err)
 	}
@@ -200,15 +219,23 @@ func (s *ServerGRPC) Listen() error {
 	return nil
 }
 
-func main() {
-	fmt.Println("Starting app...")
-	fmt.Printf("Listening on port: %v\n", port)
+func (s *ServerGRPC) Close() {
+	if s.server != nil {
+		s.server.Stop()
+	}
 
-	s, err := NewServerGRPC("evan-terraform-admin", "test-eph-music")
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := s.Listen(); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
-	}
+	return
 }
+
+// func main() {
+// fmt.Println("Starting app...")
+// fmt.Printf("Listening on port: %v\n", port)
+
+// s, err := NewServerGRPC("evan-terraform-admin", "test-eph-music")
+// if err != nil {
+// log.Fatal(err)
+// }
+// if err := s.Listen(); err != nil {
+// log.Fatalf("Failed to serve: %v", err)
+// }
+// }
