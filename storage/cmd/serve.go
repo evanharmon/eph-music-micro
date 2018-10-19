@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"log"
+
 	"github.com/evanharmon/eph-music-micro/storage/core"
 	cli "gopkg.in/urfave/cli.v2"
 )
@@ -15,38 +17,22 @@ var Serve = cli.Command{
 			Usage: "port to bind to",
 			Value: 10013,
 		},
-		&cli.StringFlag{
-			Name:  "project",
-			Usage: "google project",
-			Value: "test-eph-music",
-		},
-		&cli.StringFlag{
-			Name:  "bucket",
-			Usage: "bucket name",
-			Value: "test-eph-music",
-		},
 	},
 }
 
 func serveAction(c *cli.Context) error {
-	var (
-		err error
-
-		server  = &core.ServerGRPC{}
-		port    = c.Int("port")
-		project = c.String("project")
-		name    = c.String("bucket")
-	)
-
-	server, err = core.NewServerGRPC(core.ServerGRPCConfig{
-		Port:    port,
-		Project: project,
-		Name:    name,
+	s, err := core.NewServerGRPC(core.ServerGRPCConfig{
+		Port: c.Int("port"),
 	})
-	must(err)
-	server.Listen()
-	must(err)
-	defer server.Close()
+	if err != nil {
+		log.Fatalf("Error to creating server: %v", err)
+	}
+
+	if err := s.Listen(); err != nil {
+		log.Fatalf("Error on server listen: %v", err)
+	}
+
+	defer s.Close()
 
 	return nil
 }
