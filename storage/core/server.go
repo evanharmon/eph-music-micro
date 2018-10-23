@@ -1,11 +1,14 @@
 package core
 
+//go:generate mockgen -destination mocks/mock_server.go -package mocks github.com/evanharmon/eph-music-micro/storage/core ServerService
+
 import (
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strconv"
 
@@ -16,65 +19,77 @@ import (
 	"google.golang.org/grpc"
 )
 
-type ServerGRPC struct {
-	server *grpc.Server
-	client *gstorage.Client
-	handle *gstorage.BucketHandle
+type ServerService interface {
+	NewServerGRPC(cfg ServerGRPCConfig) (*ServerGRPC, error)
+	Listen(port int) (net.Listener, error)
+	Server(lis net.Listener) error
+	Close()
+	ListBuckets(context.Context, *pb.ListBucketsRequest) (*pb.ListBucketsResponse, error)
+	Create(context.Context, *pb.CreateRequest) (*pb.CreateResponse, error)
+	Delete(context.Context, *pb.DeleteRequest) (*pb.DeleteResponse, error)
+	UploadFile(*pb.Storage_UploadFileServer) error
+	DeleteFile(context.Context, *pb.DeleteFileRequest) (*pb.DeleteFileResponse, error)
+}
 
-	// bucketName is coupled to the handle
-	name string
-	port int
+type ServerGRPC struct {
+	client *gstorage.Client
+	server *grpc.Server
+	port   int
 }
 
 type ServerGRPCConfig struct {
-	// bucketName is coupled to the handle
-	Name    string
-	Port    int
-	Project string
+	Port int
 }
 
-// New inits and returns the bucket handler and client
+// NewServerGRPC creates a new grpc server
 func NewServerGRPC(cfg ServerGRPCConfig) (*ServerGRPC, error) {
 	var (
-		err error
-		s   ServerGRPC
-
-		name    = cfg.Name
-		port    = cfg.Port
-		project = cfg.Project
+		port = cfg.Port
 	)
 	if port == 0 {
-		return &s, errors.New("Port must be specified")
+		return nil, errors.New("Port must be specified")
 	}
 
-	if project == "" {
-		return &s, errors.New("ProjectID must not be an empty string")
-	}
-
-	if name == "" {
-		return &s, errors.New("BucketName must be provided")
-	}
-
-	client, err := configure()
+	client, err := gstorage.NewClient(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	handle := client.Bucket(name)
-	server := grpc.NewServer()
-	s = ServerGRPC{server, client, handle, name, port}
-	pb.RegisterStorageServer(server, &s)
 
-	return &s, nil
+	server := grpc.NewServer()
+	s := &ServerGRPC{client, server, port}
+	pb.RegisterStorageServer(server, s)
+
+	return s, nil
+}
+
+func (s *ServerGRPC) Listen() error {
+	lis, err := net.Listen("tcp", ":"+strconv.Itoa(s.port))
+	if err != nil {
+		s.Close()
+		return fmt.Errorf("Failed to listen: %v", err)
+	}
+	log.Printf("Server listening on port: %v\n", s.port)
+
+	if err := s.server.Serve(lis); err != nil {
+		s.Close()
+		return fmt.Errorf("Failed to serve: %v", err)
+	}
+	return nil
+}
+
+func (s *ServerGRPC) Close() {
+	if s.server != nil {
+		s.server.Stop()
+	}
+	return
 }
 
 // ListBuckets provides a way to list all storage buckets by Project ID.
-// Change the `ProjectID` package global for other project bucket lists
 func (s *ServerGRPC) ListBuckets(ctx context.Context, req *pb.ListBucketsRequest) (*pb.ListBucketsResponse, error) {
 	if req.Project.Id == "" {
 		return nil, errors.New("Project ID is required")
 	}
 	var buckets []*pb.Bucket
-	fmt.Printf("Listing buckets for project %v\n", req.Project.Id)
 	it := s.client.Buckets(ctx, req.Project.Id)
 	for {
 		battrs, err := it.Next()
@@ -88,18 +103,15 @@ func (s *ServerGRPC) ListBuckets(ctx context.Context, req *pb.ListBucketsRequest
 			Name: battrs.Name,
 		})
 	}
-	res := &pb.ListBucketsResponse{Buckets: buckets}
-	return res, nil
+	return &pb.ListBucketsResponse{Buckets: buckets}, nil
 }
 
+// Create the bucket
 func (s *ServerGRPC) Create(ctx context.Context, req *pb.CreateRequest) (*pb.CreateResponse, error) {
-	fmt.Printf("Creating bucket: %v\n", req.Bucket.Name)
-	handle := s.client.Bucket(req.Bucket.Name)
-
-	err := handle.Create(ctx, req.Project.Id, nil)
+	bkt := s.client.Bucket(req.Bucket.Name)
+	err := bkt.Create(ctx, req.Project.Id, nil)
 	gerr, ok := err.(*googleapi.Error)
 	if err != nil && !ok {
-		fmt.Printf("Error creating bucket %v: %v\n", req.Bucket.Name, err)
 		return nil, err
 	}
 
@@ -114,29 +126,33 @@ func (s *ServerGRPC) Create(ctx context.Context, req *pb.CreateRequest) (*pb.Cre
 
 // Delete the bucket
 func (s *ServerGRPC) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
-	fmt.Printf("Deleting bucket: %v\n", req.Bucket.Name)
-	handle := s.client.Bucket(req.Bucket.Name)
-	if err := handle.Delete(ctx); err != nil {
-		fmt.Printf("Error deleting bucket %v: %v\n", req.Bucket.Name, err)
-		return nil, fmt.Errorf("Failed to delete storage bucket %s: %v", s.name, err)
+	bkt := s.client.Bucket(req.Bucket.Name)
+	if err := bkt.Delete(ctx); err != nil {
+		return nil, err
 	}
-	res := &pb.DeleteResponse{Result: "success"}
-	return res, nil
+	return &pb.DeleteResponse{Result: "success"}, nil
 }
 
 // UploadFile to storage bucket
+// Request Protobuf only available via the stream
+// Response Protobuf is sent back via the closing of the stream
 func (s *ServerGRPC) UploadFile(stream pb.Storage_UploadFileServer) error {
 	var (
-		buf   []byte
-		err   error
-		fname string
+		buf        []byte
+		err        error
+		fileName   string
+		bucketName string
 	)
 	for {
 		// BEWARE last iteration of Recv(): req = nil, err = io.EOF
 		req, err := stream.Recv()
 		// only set fname once
-		if req != nil && fname == "" {
-			fname = req.File.Name
+		if req != nil && fileName == "" {
+			fileName = req.File.Name
+		}
+
+		if req != nil && bucketName == "" {
+			bucketName = req.Bucket.Name
 		}
 
 		if err != nil {
@@ -154,7 +170,8 @@ func (s *ServerGRPC) UploadFile(stream pb.Storage_UploadFileServer) error {
 END:
 	// Implement io.Reader on buf and copy to object
 	nr := bytes.NewReader(buf)
-	wc := s.handle.Object(fname).NewWriter(context.Background())
+	bkt := s.client.Bucket(bucketName)
+	wc := bkt.Object(fileName).NewWriter(context.Background())
 	if _, err = io.Copy(wc, nr); err != nil {
 		err = stream.SendAndClose(&pb.UploadFileResponse{
 			Message: "Upload failed to copy NewReader to NewWriter",
@@ -191,51 +208,9 @@ func (s *ServerGRPC) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest) 
 		return nil, fmt.Errorf("File name to delete cannot be an empty string")
 	}
 
-	// handle := s.client.Bucket(req.Bucket.Name)
-	if err := s.handle.Object(req.File.Name).Delete(ctx); err != nil {
+	bkt := s.client.Bucket(req.Bucket.Name)
+	if err := bkt.Object(req.File.Name).Delete(ctx); err != nil {
 		return nil, err
 	}
 	return &pb.DeleteFileResponse{Result: "success"}, nil
 }
-
-func configure() (*gstorage.Client, error) {
-	client, err := gstorage.NewClient(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	return client, nil
-}
-
-func (s *ServerGRPC) Listen() error {
-	lis, err := net.Listen("tcp", ":"+strconv.Itoa(s.port))
-	if err != nil {
-		return fmt.Errorf("Failed to listen: %v", err)
-	}
-	if err := s.server.Serve(lis); err != nil {
-		return fmt.Errorf("Failed to serve: %v", err)
-	}
-
-	return nil
-}
-
-func (s *ServerGRPC) Close() {
-	if s.server != nil {
-		s.server.Stop()
-	}
-
-	return
-}
-
-// func main() {
-// fmt.Println("Starting app...")
-// fmt.Printf("Listening on port: %v\n", port)
-
-// s, err := NewServerGRPC("evan-terraform-admin", "test-eph-music")
-// if err != nil {
-// log.Fatal(err)
-// }
-// if err := s.Listen(); err != nil {
-// log.Fatalf("Failed to serve: %v", err)
-// }
-// }

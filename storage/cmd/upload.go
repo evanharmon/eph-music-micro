@@ -77,7 +77,7 @@ func uploadAction(c *cli.Context) error {
 	})
 	must(err)
 
-	err = client.UploadFile(context.Background(), &pb.UploadFileRequest{
+	_, err = client.UploadFile(context.Background(), &pb.UploadFileRequest{
 		Project: &pb.Project{Id: project},
 		Bucket:  &pb.Bucket{Name: bucket},
 		File:    &pb.File{Name: fname, Path: fpath},
