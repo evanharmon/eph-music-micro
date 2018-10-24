@@ -18,6 +18,7 @@ mocks:
 
 build: proto protomock mocks
 	go build ./...
+	go build -o eph-music-micro main.go
 
 test:
 	go test -v ./... -cover

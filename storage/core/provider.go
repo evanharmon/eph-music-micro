@@ -18,8 +18,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-type ServerService interface {
-	NewServerGRPC(cfg ServerGRPCConfig) (*ServerGRPC, error)
+type ProviderService interface {
+	NewProviderGRPC(cfg ProviderGRPCConfig) (*ProviderGRPC, error)
 	Listen(port int) (net.Listener, error)
 	Server(lis net.Listener) error
 	Close()
@@ -30,18 +30,18 @@ type ServerService interface {
 	DeleteFile(context.Context, *pb.DeleteFileRequest) (*pb.DeleteFileResponse, error)
 }
 
-type ServerGRPC struct {
+type ProviderGRPC struct {
 	client *gstorage.Client
 	server *grpc.Server
 	port   int
 }
 
-type ServerGRPCConfig struct {
+type ProviderGRPCConfig struct {
 	Port int
 }
 
-// NewServerGRPC creates a new grpc server
-func NewServerGRPC(cfg ServerGRPCConfig) (*ServerGRPC, error) {
+// NewProviderGRPC creates a new grpc server
+func NewProviderGRPC(cfg ProviderGRPCConfig) (*ProviderGRPC, error) {
 	var (
 		port = cfg.Port
 	)
@@ -55,13 +55,13 @@ func NewServerGRPC(cfg ServerGRPCConfig) (*ServerGRPC, error) {
 	}
 
 	server := grpc.NewServer()
-	s := &ServerGRPC{client, server, port}
+	s := &ProviderGRPC{client, server, port}
 	pb.RegisterStorageServer(server, s)
 
 	return s, nil
 }
 
-func (s *ServerGRPC) Listen() error {
+func (s *ProviderGRPC) Listen() error {
 	lis, err := net.Listen("tcp", ":"+strconv.Itoa(s.port))
 	if err != nil {
 		s.Close()
@@ -76,7 +76,7 @@ func (s *ServerGRPC) Listen() error {
 	return nil
 }
 
-func (s *ServerGRPC) Close() {
+func (s *ProviderGRPC) Close() {
 	if s.server != nil {
 		s.server.Stop()
 	}
@@ -84,7 +84,7 @@ func (s *ServerGRPC) Close() {
 }
 
 // ListBuckets provides a way to list all storage buckets by Project ID.
-func (s *ServerGRPC) ListBuckets(ctx context.Context, req *pb.ListBucketsRequest) (*pb.ListBucketsResponse, error) {
+func (s *ProviderGRPC) ListBuckets(ctx context.Context, req *pb.ListBucketsRequest) (*pb.ListBucketsResponse, error) {
 	if req.Project.Id == "" {
 		return nil, errors.New("Project ID is required")
 	}
@@ -106,7 +106,7 @@ func (s *ServerGRPC) ListBuckets(ctx context.Context, req *pb.ListBucketsRequest
 }
 
 // Create the bucket
-func (s *ServerGRPC) Create(ctx context.Context, req *pb.CreateRequest) (*pb.CreateResponse, error) {
+func (s *ProviderGRPC) Create(ctx context.Context, req *pb.CreateRequest) (*pb.CreateResponse, error) {
 	bkt := s.client.Bucket(req.Bucket.Name)
 	err := bkt.Create(ctx, req.Project.Id, nil)
 	gerr, ok := err.(*googleapi.Error)
@@ -124,7 +124,7 @@ func (s *ServerGRPC) Create(ctx context.Context, req *pb.CreateRequest) (*pb.Cre
 }
 
 // Delete the bucket
-func (s *ServerGRPC) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+func (s *ProviderGRPC) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	bkt := s.client.Bucket(req.Bucket.Name)
 	if err := bkt.Delete(ctx); err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func (s *ServerGRPC) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.Del
 // UploadFile to storage bucket
 // Request Protobuf only available via the stream
 // Response Protobuf is sent back via the closing of the stream
-func (s *ServerGRPC) UploadFile(stream pb.Storage_UploadFileServer) error {
+func (s *ProviderGRPC) UploadFile(stream pb.Storage_UploadFileServer) error {
 	var (
 		buf        []byte
 		err        error
@@ -202,7 +202,7 @@ END:
 }
 
 // DeleteFile from storage bucket
-func (s *ServerGRPC) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest) (*pb.DeleteFileResponse, error) {
+func (s *ProviderGRPC) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest) (*pb.DeleteFileResponse, error) {
 	if req.File.Name == "" {
 		return nil, fmt.Errorf("File name to delete cannot be an empty string")
 	}

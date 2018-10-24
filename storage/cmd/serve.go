@@ -21,7 +21,7 @@ var Serve = cli.Command{
 }
 
 func serveAction(c *cli.Context) error {
-	s, err := core.NewServerGRPC(core.ServerGRPCConfig{
+	s, err := core.NewProviderGRPC(core.ProviderGRPCConfig{
 		Port: c.Int("port"),
 	})
 	if err != nil {

@@ -6,10 +6,10 @@ import (
 	"github.com/evanharmon/eph-music-micro/storage/core"
 )
 
-func TestNewServerGRPC(t *testing.T) {
+func TestNewProviderGRPC(t *testing.T) {
 	t.Run("Non-int port should return error", func(t *testing.T) {
-		cfg := core.ServerGRPCConfig{Port: 0}
-		if _, err := core.NewServerGRPC(cfg); err == nil {
+		cfg := core.ProviderGRPCConfig{Port: 0}
+		if _, err := core.NewProviderGRPC(cfg); err == nil {
 			t.Errorf("Invalid Port 0 should throw error")
 		}
 	})
