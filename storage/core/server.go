@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 
@@ -68,7 +67,7 @@ func (s *ServerGRPC) Listen() error {
 		s.Close()
 		return fmt.Errorf("Failed to listen: %v", err)
 	}
-	log.Printf("Server listening on port: %v\n", s.port)
+	fmt.Printf("Server listening on port: %v\n", s.port)
 
 	if err := s.server.Serve(lis); err != nil {
 		s.Close()

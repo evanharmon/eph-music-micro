@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/evanharmon/eph-music-micro/storage/core"
 	cli "gopkg.in/urfave/cli.v2"
@@ -25,11 +25,13 @@ func serveAction(c *cli.Context) error {
 		Port: c.Int("port"),
 	})
 	if err != nil {
-		log.Fatalf("Error to creating server: %v", err)
+		fmt.Printf("Error creating server: %v", err)
+		return cli.Exit(err, 1)
 	}
 
 	if err := s.Listen(); err != nil {
-		log.Fatalf("Error on server listen: %v", err)
+		fmt.Printf("Error on server listen: %v", err)
+		return cli.Exit(err, 1)
 	}
 
 	defer s.Close()
