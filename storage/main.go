@@ -14,6 +14,7 @@ func main() {
 		Commands: []*cli.Command{
 			&cmd.Serve,
 			&cmd.Upload,
+			&cmd.ListBuckets,
 		},
 	}
 

@@ -1,6 +1,6 @@
 package core
 
-//go:generate mockgen -destination mocks/mock_server.go -package mocks github.com/evanharmon/eph-music-micro/storage/core ServerService
+//go:generate mockgen -destination mocks/mock_provider.go -package mocks github.com/evanharmon/eph-music-micro/storage/core ProviderService
 
 import (
 	"bytes"

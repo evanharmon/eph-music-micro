@@ -33,7 +33,7 @@ var Upload = cli.Command{
 		},
 		&cli.StringFlag{
 			Name:  "project",
-			Usage: "project name",
+			Usage: "project id",
 			Value: "eph-music",
 		},
 		&cli.StringFlag{
@@ -59,15 +59,17 @@ func uploadAction(c *cli.Context) error {
 	)
 
 	if address == "" {
-		must(errors.New("address"))
+		errors.New("Address is required")
+		return cli.Exit(err, 1)
 	}
 
 	if file == "" {
-		must(errors.New("file must be set"))
+		errors.New("file must be set")
+		return cli.Exit(err, 1)
 	}
 	fpath, err = filepath.Abs(file)
 	if err != nil {
-		return fmt.Errorf("File not found: %s", file)
+		return cli.Exit(fmt.Errorf("File not found: %s", file), 1)
 	}
 	fname = filepath.Base(file)
 
@@ -75,7 +77,10 @@ func uploadAction(c *cli.Context) error {
 		Address:   address,
 		ChunkSize: chunkSize,
 	})
-	must(err)
+	if err != nil {
+		return cli.Exit(err, 1)
+	}
+	defer client.Close()
 
 	_, err = client.UploadFile(context.Background(), &pb.UploadFileRequest{
 		Project: &pb.Project{Id: project},
@@ -83,8 +88,9 @@ func uploadAction(c *cli.Context) error {
 		File:    &pb.File{Name: fname, Path: fpath},
 		Chunk:   &pb.Chunk{Content: []byte{}},
 	})
-	must(err)
-	defer client.Close()
+	if err != nil {
+		return cli.Exit(err, 1)
+	}
 
 	return nil
 }

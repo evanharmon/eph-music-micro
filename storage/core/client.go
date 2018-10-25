@@ -40,7 +40,8 @@ func NewClientGRPC(cfg ClientGRPCConfig) (ClientGRPC, error) {
 		err error
 		c   ClientGRPC
 
-		grpcOpts = []grpc.DialOption{}
+		grpcOpts  = []grpc.DialOption{}
+		chunkSize = cfg.ChunkSize
 	)
 	// Certs Not Implemented
 	grpcOpts = append(grpcOpts, grpc.WithInsecure())
@@ -49,14 +50,15 @@ func NewClientGRPC(cfg ClientGRPCConfig) (ClientGRPC, error) {
 		return c, errors.Errorf("address must be specified")
 	}
 
+	if cfg.ChunkSize == 0 {
+		chunkSize = 1024
+	}
 	// Cleaner Than IF statement
 	switch {
-	case cfg.ChunkSize == 0:
-		return c, errors.Errorf("Chunksize must be specified")
 	case cfg.ChunkSize > (1 << 22):
 		return c, errors.Errorf("Chunksize must be less than 4MB")
 	default:
-		c.chunkSize = cfg.ChunkSize
+		c.chunkSize = chunkSize
 	}
 
 	c.conn, err = grpc.Dial(cfg.Address, grpcOpts...)
